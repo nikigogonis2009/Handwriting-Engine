@@ -130,3 +130,88 @@ test('in a box about one line tall the writing sits on the bottom edge, in a tal
   const baseTall = tall.y + (t.layout.baselines[0] - t.dy) * t.K;
   assert.ok(baseTall < tall.y + 3 * t.xhPt, 'baseline in the first lines: ' + baseTall);
 });
+
+// ---- finding the blanks on a page ----
+// A grey picture of a letter-size page at 2 pixels per point, drawn with plain rectangles.
+function pagePicture(paper) {
+  const s = 2;
+  const W = 612 * s;
+  const H = 792 * s;
+  const data = new Uint8Array(W * H);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) data[y * W + x] = paper ? paper(x / s, y / s) : 255;
+  const ink = (x, y, w, h) => {
+    for (let yy = Math.round(y * s); yy < Math.round((y + h) * s); yy++) for (let xx = Math.round(x * s); xx < Math.round((x + w) * s); xx++) data[yy * W + xx] = Math.round(data[yy * W + xx] * 0.4);
+  };
+  const outline = (x, y, w, h) => {
+    ink(x, y, w, 1);
+    ink(x, y + h - 1, w, 1);
+    ink(x, y, 1, h);
+    ink(x + w - 1, y, 1, h);
+  };
+  const text = (x, y, w) => {
+    for (let i = 0; i < w; i += 6) ink(x + i, y, 3, 8); // blobs the size of letters
+  };
+  return { img: { data, width: W, height: H }, s, ink, outline, text };
+}
+const near = (a, b, tol) => Math.abs(a - b) <= tol;
+
+test('blank answer lines and empty boxes are found, and a line box sits on its line', () => {
+  const P = pagePicture();
+  P.text(72, 60, 150);
+  P.ink(72, 100, 300, 0.75); // an answer line
+  P.outline(72, 200, 300, 60); // an empty box
+  P.text(72, 515, 180);
+  P.ink(300, 520, 200, 0.75); // "Name: ______": a label beside the line, nothing above it
+  const found = Sheet.findBlanks(P.img, P.s);
+  assert.equal(found.length, 3, JSON.stringify(found));
+  const [a, box, name] = found;
+  assert.equal(a.kind, 'line');
+  assert.ok(near(a.y + a.h, 100, 1) && near(a.x, 72, 2) && near(a.w, 300, 3), 'the box ends on the line: ' + JSON.stringify(a));
+  assert.ok(a.h >= 14 && a.h <= 28);
+  assert.equal(box.kind, 'box');
+  assert.ok(box.x > 72 && box.y > 200 && box.x + box.w < 372 && box.y + box.h < 260, 'inside the outline: ' + JSON.stringify(box));
+  assert.equal(name.kind, 'line');
+  assert.ok(near(name.x, 300, 2), JSON.stringify(name));
+});
+
+test('lines and boxes that are not blanks are left alone', () => {
+  const P = pagePicture();
+  P.text(72, 150, 100);
+  P.ink(72, 160, 200, 0.75); // underlines a heading: text sits on it
+  P.outline(72, 300, 300, 60);
+  P.text(80, 320, 120); // a box with something written in it
+  P.outline(380, 200, 150, 120);
+  P.text(390, 210, 100); // a framed note: neither its top nor its bottom edge is a line to write on
+  P.ink(72, 400, 300, 6); // a thick bar
+  P.ink(72, 450, 20, 0.75); // too short to write on
+  assert.deepEqual(Sheet.findBlanks(P.img, P.s), []);
+});
+
+test('only the empty cells of a table are offered, not its rules', () => {
+  const P = pagePicture();
+  const xs = [72, 172, 272, 372];
+  const ys = [415, 440, 465, 490];
+  for (const y of ys) P.ink(72, y, 301, 0.8);
+  for (const x of xs) P.ink(x, 415, 0.8, 75.8);
+  P.text(110, 422, 10); // row 1: both cells filled
+  P.text(210, 422, 10);
+  P.text(110, 447, 10); // row 2: only the first cell filled, row 3: none
+  const found = Sheet.findBlanks(P.img, P.s);
+  assert.ok(found.every((g) => g.kind === 'box'), JSON.stringify(found));
+  const cells = found.map((g) => [xs.findIndex((x) => g.x > x && g.x < x + 100), ys.findIndex((y) => g.y > y && g.y < y + 25)].join(','));
+  assert.deepEqual(cells.sort(), ['0,2', '1,1', '1,2', '2,0', '2,1', '2,2'], 'column,row of each empty cell');
+});
+
+test('a photo with a shadow across it still gives its blanks', () => {
+  // the paper gets darker towards the bottom right, with some grain, like a phone photo
+  let seed = 7;
+  const grain = () => (((seed = Math.imul(seed, 48271) % 2147483647) & 0xffff) / 0xffff - 0.5) * 16;
+  const P = pagePicture((x, y) => Math.max(0, Math.min(255, 245 - 95 * (x / 612 / 2 + y / 792 / 2) + grain())));
+  P.text(72, 60, 150);
+  P.ink(72, 100, 300, 1);
+  P.text(300, 600, 150);
+  P.ink(300, 640, 250, 1); // deep in the shadow
+  P.outline(320, 680, 220, 50);
+  const found = Sheet.findBlanks(P.img, P.s);
+  assert.deepEqual(found.map((g) => g.kind), ['line', 'line', 'box'], JSON.stringify(found));
+});

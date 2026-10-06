@@ -35,7 +35,7 @@ Export (in the Teach tab) saves your samples to a file, and Import loads them on
 The Sheet tab puts your handwriting on a real worksheet, with nothing to install and nothing sent anywhere.
 
 1. Tap **Open worksheet** and choose the PDF, or a photo or screenshot of it (PNG or JPEG).
-2. Tap **Draw answer box** and drag a rectangle where an answer goes. Drag a box to move it, or drag the round handle at its corner to resize it. A box can be on any page; use the arrows to turn pages.
+2. The blanks on the page are marked in green: answer lines (printed rules and rows of underscores with nothing written on them) and empty boxes, including empty table cells. Tap one and an answer box is put there, sitting on the line. **Find blanks** turns the marks off and on. For anywhere else, tap **Draw answer box** and drag a rectangle where the answer goes. Drag a box to move it, or drag the round handle at its corner to resize it. A box can be on any page; use the arrows to turn pages.
 3. With a box selected, type the answer in the panel on the right. It is written in your hand straight away, in the pen and colour set in the Write tab. Choose **Math** to type it as math (`\frac{a}{b}`, `x^2`), and **Another take** if you want that answer written differently.
 4. An answer that is too long for its box is written smaller until it fits (unless you untick that), and the panel says so. Letter height sets the size it starts from, in points.
 5. **Save PDF** gives back the worksheet with the writing drawn on top as vector ink, so it stays sharp. **Save page as PNG** saves the page you are looking at as a picture.

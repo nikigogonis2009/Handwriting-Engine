@@ -176,6 +176,7 @@ Pack my box with five dozen liquor jugs.</textarea>
           <div class="card sheet-bar actions">
             <button id="sheetOpen" class="primary">Open worksheet</button>
             <input type="file" id="sheetFile" accept="application/pdf,image/png,image/jpeg" hidden>
+            <button id="sheetFind" class="ghost" aria-pressed="true" disabled>Find blanks</button>
             <button id="sheetDraw" class="ghost" disabled>Draw answer box</button>
             <span class="pager">
               <button id="sheetPrev" class="ghost" aria-label="Previous page" disabled>&lsaquo;</button>
@@ -186,9 +187,10 @@ Pack my box with five dozen liquor jugs.</textarea>
             <button id="sheetSavePdf" disabled>Save PDF</button>
             <button id="sheetSavePng" class="ghost" disabled>Save page as PNG</button>
           </div>
+          <p class="muted small sheet-find-note" id="sheetFindNote" hidden></p>
           <p class="warn" id="sheetWarn" hidden></p>
           <div class="sheet-scroll" id="sheetScroll">
-            <p class="muted sheet-empty" id="sheetEmpty">Open a PDF or a photo of the worksheet. Then tap <b>Draw answer box</b> and drag a rectangle where an answer goes.</p>
+            <p class="muted sheet-empty" id="sheetEmpty">Open a PDF or a photo of the worksheet. The answer lines and empty boxes on it are marked in green: tap one to write in it. For anywhere else, tap <b>Draw answer box</b> and drag a rectangle.</p>
             <div class="sheet-stage" id="sheetStage" hidden>
               <canvas id="sheetCanvas"></canvas>
               <svg id="sheetInk" class="sheet-ink" aria-hidden="true"></svg>

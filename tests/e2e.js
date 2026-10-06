@@ -304,6 +304,10 @@ async function inkPixels(page, selector) {
     check('a PDF opens and shows its pages', await page.isVisible('#sheetStage'));
     const shownInk = await inkPixels(page, '#sheetCanvas');
     check('the page is drawn', shownInk > 200, String(shownInk));
+    await page.waitForFunction(() => window.HW_SHEET.blanks !== null, null, { timeout: 20000 });
+    const blanks1 = await page.evaluate(() => window.HW_SHEET.blanks);
+    check('the answer line on the page is found by itself', blanks1.length === 1 && blanks1[0].kind === 'line' && Math.abs(blanks1[0].y + blanks1[0].h - 192) < 2, JSON.stringify(blanks1));
+    check('it is marked on the page and the note says how to use it', (await page.locator('.sheet-sugg').count()) === 1 && /Tap one/.test(await page.textContent('#sheetFindNote')));
 
     // drag a box just above the line on page 1: x 72..540, y 160..190 pt from the top
     await page.click('#sheetDraw');
@@ -397,6 +401,17 @@ async function inkPixels(page, selector) {
     await page.click('#sheetNext');
     await page.waitForFunction(() => /Page 2 of 2/.test(document.querySelector('#sheetPageNo').textContent));
     check('boxes belong to their page', (await page.locator('.sheet-box').count()) === 0 && (await page.locator('#sheetInk path').count()) === 0);
+    await page.waitForFunction(() => document.querySelectorAll('.sheet-sugg').length === 1, null, { timeout: 20000 });
+    check('the blanks of the next page are found when it is shown', true);
+    await page.click('.sheet-sugg');
+    const fromBlank = await page.evaluate(() => window.HW_SHEET.boxes.filter((b) => b.page === 1).map((b) => ({ x: b.x, y: b.y, w: b.w, h: b.h })));
+    check('tapping a blank makes an answer box that sits on its line', fromBlank.length === 1 && Math.abs(fromBlank[0].y + fromBlank[0].h - 192) < 2 && fromBlank[0].w > 400, JSON.stringify(fromBlank));
+    check('the new box is selected, ready to type, and its blank is no longer offered', (await page.isVisible('#sheetForm')) && (await page.locator('.sheet-sugg').count()) === 0);
+    await page.click('#sheetDelete');
+    check('deleting that box offers the blank again', (await page.locator('.sheet-sugg').count()) === 1);
+    await page.click('#sheetFind');
+    check('Find blanks can be turned off', (await page.locator('.sheet-sugg').count()) === 0 && (await page.getAttribute('#sheetFind', 'aria-pressed')) === 'false');
+    await page.click('#sheetFind');
     await page.click('#sheetPrev');
     await page.waitForFunction(() => /Page 1 of 2/.test(document.querySelector('#sheetPageNo').textContent));
     await page.locator('.sheet-box').first().click({ position: { x: 20, y: 8 } });

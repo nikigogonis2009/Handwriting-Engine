@@ -165,7 +165,7 @@ textarea { resize: vertical; font-size: 1rem; }
 .sheet-bar { margin: 0 0 12px; }
 .sheet-bar .pager { display: inline-flex; gap: 6px; align-items: center; }
 .sheet-bar .pager button { min-width: 44px; padding: 8px 12px; }
-#sheetDraw[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+#sheetDraw[aria-pressed="true"], #sheetFind[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 .sheet-scroll { overflow: auto; background: var(--chip); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; min-height: 220px; }
 .sheet-empty { margin: 40px 12px; text-align: center; }
 .sheet-stage { position: relative; margin: 0 auto; background: #fff; box-shadow: 0 1px 6px rgba(0, 0, 0, 0.25); line-height: 0; }
@@ -179,6 +179,18 @@ textarea { resize: vertical; font-size: 1rem; }
 .sheet-box.over { border-color: #d97706; background: rgba(217, 119, 6, 0.1); }
 .sheet-box .grip { position: absolute; right: -10px; bottom: -10px; width: 26px; height: 26px; border-radius: 50%; background: #2b4fd0; border: 2px solid #fff; cursor: nwse-resize; touch-action: none; display: none; }
 .sheet-box.sel .grip { display: block; }
+/* blanks found on the page: tap one to make it an answer box */
+.sheet-sugg {
+  position: absolute; min-height: 0; padding: 0; margin: 0; border-radius: 4px; font: inherit; line-height: 1;
+  border: 1.5px dashed rgba(47, 125, 79, 0.75); background: rgba(47, 125, 79, 0.08); cursor: pointer; touch-action: manipulation;
+}
+.sheet-sugg:hover, .sheet-sugg:focus-visible { background: rgba(47, 125, 79, 0.18); outline: none; }
+.sheet-sugg .plus {
+  position: absolute; left: 4px; top: 50%; transform: translateY(-50%); width: 18px; height: 18px; border-radius: 50%;
+  background: #2f7d4f; color: #fff; font-size: 14px; font-weight: 700; line-height: 18px; text-align: center;
+}
+.sheet-boxes.drawing .sheet-sugg { pointer-events: none; opacity: 0.35; }
+.sheet-find-note { margin: -4px 0 10px; }
 .sheet-side textarea { margin-top: 4px; }
 .sheet-side .row { margin: 10px 0; }
 

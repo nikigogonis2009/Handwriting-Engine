@@ -26,6 +26,8 @@
   let boxes = []; // answer boxes of the whole file
   let selId = null;
   let drawing = false; // the next drag draws a new box
+  let finding = true; // show the blanks found on the page (answer lines, empty boxes)
+  const blanks = new Map(); // page index -> the blanks found on it, in points (see HW.sheet.findBlanks)
   let styleVersion = 0;
   let nextId = 1;
   let renderTask = null;
@@ -172,6 +174,7 @@
     pageIdx = 0;
     selId = null;
     placedCache.clear();
+    blanks.clear();
     restore();
     $('#sheetEmpty').hidden = true;
     $('#sheetStage').hidden = false;
@@ -208,6 +211,70 @@
     }
     drawBoxes();
     drawInk();
+    if (finding && !blanks.has(pageIdx)) {
+      await findBlanksOnPage();
+      drawBoxes();
+    }
+    showFindNote();
+  }
+
+  // ---- finding the blanks on a page -----------------------------------------------------------------------------------
+  // The page is drawn again off screen at a fixed 2 pixels per point, so what is found does not depend on the screen.
+  async function findBlanksOnPage() {
+    const idx = pageIdx;
+    if (blanks.has(idx)) return blanks.get(idx);
+    status('Looking for blanks');
+    let found = [];
+    try {
+      const page = await pdf.getPage(idx + 1);
+      const s = 2;
+      const vp = page.getViewport({ scale: s });
+      const c = document.createElement('canvas');
+      c.width = Math.round(vp.width);
+      c.height = Math.round(vp.height);
+      const ctx = c.getContext('2d', { willReadFrequently: true });
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, c.width, c.height);
+      await page.render({ canvasContext: ctx, viewport: vp }).promise;
+      found = HW.sheet.findBlanks(ctx.getImageData(0, 0, c.width, c.height), s);
+    } catch {
+      found = []; // finding blanks is a help, never a reason the page cannot be used
+    }
+    blanks.set(idx, found);
+    status('');
+    return found;
+  }
+
+  /** The blanks of this page that no box covers yet. */
+  function openBlanks() {
+    const list = blanks.get(pageIdx) || [];
+    const mine = pageBoxes();
+    const overlap = (a, b) => Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+    return list.filter((g) => !mine.some((b) => overlap(g, b) > 0.3 * Math.min(g.w * g.h, b.w * b.h)));
+  }
+
+  function showFindNote() {
+    const note = $('#sheetFindNote');
+    if (!pdf || !finding || !blanks.has(pageIdx)) {
+      note.hidden = true;
+      return;
+    }
+    const all = (blanks.get(pageIdx) || []).length;
+    const left = openBlanks().length;
+    note.hidden = false;
+    if (!all) note.textContent = 'No answer lines or empty boxes found on this page. Use Draw answer box to put an answer anywhere.';
+    else if (!left) note.textContent = 'Every blank found on this page has a box. Use Draw answer box for anywhere else.';
+    else note.textContent = left + (left === 1 ? ' blank' : ' blanks') + ' on this page, marked in green. Tap one to write in it.';
+  }
+
+  function useBlank(g) {
+    const b = { id: nextId++, page: pageIdx, text: '', kind: 'text', seed: 1, auto: true, x: g.x, y: g.y, w: g.w, h: g.h };
+    boxes.push(b);
+    drawBoxes();
+    select(b.id);
+    $('#sheetText').focus();
+    persist();
+    showFindNote();
   }
 
   // ---- the ink of a box --------------------------------------------------------------------------------------------
@@ -280,6 +347,21 @@
   function drawBoxes() {
     const host = $('#sheetBoxes');
     host.innerHTML = '';
+    if (finding) {
+      openBlanks().forEach((g) => {
+        const el = document.createElement('button');
+        el.type = 'button';
+        el.className = 'sheet-sugg';
+        el.dataset.blank = String((blanks.get(pageIdx) || []).indexOf(g));
+        el.setAttribute('aria-label', g.kind === 'line' ? 'Answer line: tap to write on it' : 'Empty box: tap to write in it');
+        place(el, g);
+        const plus = document.createElement('span');
+        plus.className = 'plus';
+        plus.textContent = '+';
+        el.appendChild(plus);
+        host.appendChild(el);
+      });
+    }
     for (const b of pageBoxes()) {
       const el = document.createElement('div');
       el.className = 'sheet-box' + (b.id === selId ? ' sel' : '');
@@ -324,6 +406,8 @@
     const have = !!pdf;
     const n = pdf ? pdf.numPages : 0;
     $('#sheetDraw').disabled = !have;
+    $('#sheetFind').disabled = !have;
+    $('#sheetFind').setAttribute('aria-pressed', String(finding));
     $('#sheetPrev').disabled = !have || pageIdx === 0;
     $('#sheetNext').disabled = !have || pageIdx >= n - 1;
     $('#sheetPageNo').textContent = have ? 'Page ' + (pageIdx + 1) + ' of ' + n : 'no page';
@@ -346,6 +430,7 @@
 
   host.addEventListener('pointerdown', (ev) => {
     if (!pdf || (ev.pointerType === 'mouse' && ev.button !== 0)) return;
+    if (!drawing && ev.target.closest('.sheet-sugg')) return; // taken by the click below, so a swipe from here still scrolls
     const boxEl = ev.target.closest('.sheet-box');
     const p = pt(ev);
     if (boxEl && !drawing) {
@@ -418,6 +503,12 @@
     if (d.moved) persist();
   }
   host.addEventListener('pointerup', endDrag);
+  host.addEventListener('click', (ev) => {
+    const el = ev.target.closest('.sheet-sugg');
+    if (!el || drawing) return;
+    const g = (blanks.get(pageIdx) || [])[Number(el.dataset.blank)];
+    if (g) useBlank(g);
+  });
   host.addEventListener('pointercancel', endDrag);
 
   // ---- the form -------------------------------------------------------------------------------------------------------------------------
@@ -458,6 +549,7 @@
     drawInk();
     syncForm();
     persist();
+    showFindNote();
   });
   document.addEventListener('keydown', (ev) => {
     if ($('#sheet').hidden || !curBox()) return;
@@ -473,6 +565,13 @@
     const f = $('#sheetFile').files[0];
     $('#sheetFile').value = ''; // so choosing the same file again still opens it
     if (f) openFile(f);
+  });
+  $('#sheetFind').addEventListener('click', async () => {
+    finding = !finding;
+    syncUi();
+    if (finding && pdf) await findBlanksOnPage();
+    drawBoxes();
+    showFindNote();
   });
   $('#sheetDraw').addEventListener('click', () => {
     drawing = !drawing;
@@ -575,6 +674,9 @@
     },
     get page() {
       return { w: pageW, h: pageH, idx: pageIdx };
+    },
+    get blanks() {
+      return blanks.get(pageIdx) || null;
     },
   };
   syncUi();
