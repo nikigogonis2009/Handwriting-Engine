@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<meta name="color-scheme" content="light dark">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Handwriting Engine</title>
+<style>
+  :root { --bg:#f4f2ec; --card:#fff; --text:#1d2130; --muted:#6b7080; --line:#dcd9d0; --accent:#2b4fd0; --accent-ink:#fff; --err:#b3261e; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#14161d; --card:#1d2029; --text:#e8e9ee; --muted:#9a9fb0; --line:#2f3340; --accent:#7c9bff; --accent-ink:#0e1220; --err:#ff8a80; } }
+  * { box-sizing: border-box; }
+  body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px;
+         background:var(--bg); color:var(--text); font:16px/1.45 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif; }
+  form { width:100%; max-width:380px; background:var(--card); border:1px solid var(--line); border-radius:16px; padding:28px 24px; }
+  h1 { font-size:1.2rem; margin:0 0 4px; }
+  p { margin:0 0 18px; color:var(--muted); font-size:.92rem; }
+  input[type=password] { width:100%; font:inherit; color:var(--text); background:var(--bg); border:1px solid var(--line); border-radius:10px; padding:12px 14px; min-height:48px; }
+  input[type=password]:focus { outline:2px solid var(--accent); outline-offset:1px; }
+  .remember { display:flex; gap:8px; align-items:center; margin:14px 0; font-size:.9rem; color:var(--muted); }
+  button { width:100%; font:inherit; font-weight:600; color:var(--accent-ink); background:var(--accent); border:0; border-radius:10px; padding:12px; min-height:48px; cursor:pointer; }
+  button:disabled { opacity:.55; cursor:default; }
+  .err { color:var(--err); font-size:.9rem; min-height:1.3em; margin:10px 0 0; }
+  [hidden] { display:none !important; }
+</style>
+</head>
+<body>
+<form id="f" autocomplete="on" hidden>
+  <h1>Handwriting Engine</h1>
+  <p>This page is private. Enter the password to open it.</p>
+  <input type="text" name="username" value="handwriting" autocomplete="username" hidden>
+  <input id="pw" type="password" name="password" autocomplete="current-password" placeholder="Password" autofocus required>
+  <label class="remember"><input id="rem" type="checkbox" checked> Remember on this device</label>
+  <button id="go" type="submit">Unlock</button>
+  <p class="err" id="err" role="alert" aria-live="assertive"></p>
+</form>
+<noscript><p>This page needs JavaScript to unlock.</p></noscript>
+<script>
+(function () {
+  'use strict';
+  var B = __BLOBS__;   // the app, locked with a random key (one per kind of package)
+  var S = __SLOTS__;   // one per password: opens that key, and says which part of the site it is
+  var STORE = 'hwp.k';
+  var f = document.getElementById('f');
+  var err = document.getElementById('err');
+  var go = document.getElementById('go');
+
+  function b64(s) { var b = atob(s), a = new Uint8Array(b.length); for (var i = 0; i < b.length; i++) a[i] = b.charCodeAt(i); return a; }
+  function b64enc(buf) { var s = ''; var a = new Uint8Array(buf); for (var i = 0; i < a.length; i++) s += String.fromCharCode(a[i]); return btoa(s); }
+  function get() { try { return JSON.parse(localStorage.getItem(STORE)); } catch (e) { return null; } }
+  function put(v) { try { localStorage.setItem(STORE, JSON.stringify(v)); } catch (e) { /* private mode */ } }
+  function forget() { try { localStorage.removeItem(STORE); } catch (e) { /* ignore */ } }
+
+  async function gcmDecrypt(rawKey, iv, data) {
+    var key = await crypto.subtle.importKey('raw', rawKey, 'AES-GCM', false, ['decrypt']);
+    return new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64(iv) }, key, b64(data)));
+  }
+  /** The blob's key, unlocked with a password (or throws). */
+  async function unwrap(pw, slot) {
+    var base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pw.normalize('NFKC')), 'PBKDF2', false, ['deriveBits']);
+    var bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt: b64(slot.salt), iterations: slot.iter, hash: 'SHA-256' }, base, 256);
+    return gcmDecrypt(new Uint8Array(bits), slot.wrapIv, slot.wrapped);
+  }
+  function open(html, slot) {
+    window.HW_LOCK = function () { forget(); location.reload(); };
+    // which part of the site this is, ahead of the app's own scripts: it decides where the app keeps its data and what its button downloads
+    if (slot.profile) {
+      html = html.replace('<body>', function () {
+        return '<body>\n<script>window.HW_PROFILE = ' + JSON.stringify(slot.profile) + '; window.HW_PROFILE_KIND = ' + JSON.stringify(slot.kind) + ';<\/script>';
+      });
+    }
+    document.open();
+    document.write(html);
+    document.close();
+  }
+  async function show(rawKey, slot) {
+    open(new TextDecoder().decode(await gcmDecrypt(rawKey, B[slot.blob].iv, B[slot.blob].data)), slot);
+  }
+
+  async function tryRemembered() {
+    var r = get();
+    var slot = r && S.filter(function (q) { return q.id === r.id; })[0];
+    if (!slot) { forget(); return false; }
+    try { await show(b64(r.k), slot); return true; } catch (e) { forget(); return false; }
+  }
+
+  f.addEventListener('submit', async function (ev) {
+    ev.preventDefault();
+    err.textContent = '';
+    go.disabled = true; go.textContent = 'Unlocking';
+    try {
+      var pw = document.getElementById('pw').value;
+      var found = null, rawKey = null;
+      for (var i = 0; i < S.length && !found; i++) { // a password belongs to at most one part of the site
+        try { rawKey = await unwrap(pw, S[i]); found = S[i]; } catch (e2) { found = null; }
+      }
+      if (!found) throw new Error('wrong password');
+      if (document.getElementById('rem').checked) put({ id: found.id, k: b64enc(rawKey) });
+      await show(rawKey, found);
+    } catch (e) {
+      go.disabled = false; go.textContent = 'Unlock';
+      err.textContent = window.isSecureContext ? 'Wrong password.' : 'This page must be opened over https.';
+      document.getElementById('pw').select();
+    }
+  });
+
+  (async function () {
+    if (!window.crypto || !crypto.subtle) { f.hidden = false; err.textContent = 'This page must be opened over https.'; return; }
+    if (!(await tryRemembered())) { f.hidden = false; document.getElementById('pw').focus(); }
+  })();
+})();
+</script>
+</body>
+</html>

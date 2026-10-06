@@ -1,0 +1,11 @@
+{
+  "ink": "#1749b3",
+  "xhPt": 9.5,
+  "blocks": [
+    { "name": "a1", "page": 0, "x": 72, "y": 310, "width": 460, "text": "This is plain text written in my own handwriting.", "kind": "text" },
+    { "name": "a2", "page": 0, "x": 72, "y": 360, "width": 460, "text": "z = \\frac{b - a}{c} = d^2 + \\sqrt{x}", "kind": "math" }
+  ],
+  "marks": [
+    { "page": 0, "points": [[72, 430], [260, 430]], "arrow": true }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "name": "handwriting-engine",
+  "version": "1.0.0",
+  "description": "Turns your own Apple Pencil handwriting into new handwriting for any text, in the browser.",
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "e2e": "node tests/e2e.js",
+    "e2e:protected": "node tests/e2e-protected.js",
+    "mcp": "node mcp/server.js",
+    "build:mcp": "node scripts/build-mcp.js",
+    "serve": "npx http-server -p 8080 -c-1 .",
+    "build:protected": "node scripts/build-protected.js",
+    "deploy:pages": "bash scripts/deploy-pages.sh"
+  },
+  "devDependencies": {
+    "playwright": "^1.56.1"
+  }
+}

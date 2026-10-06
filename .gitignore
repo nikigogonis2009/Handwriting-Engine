@@ -1,0 +1,9 @@
+node_modules/
+package-lock.json
+*.log
+.DS_Store
+dist/
+# the writer's own samples are personal
+my-handwriting*.json
+*.pdf
+.handwriting-cache/

@@ -1,0 +1,58 @@
+FOR THE AI ASSISTANT: how to use this handwriting server
+=========================================================
+
+The person who gave you this folder taught the Handwriting Engine their own handwriting. This folder lets you write
+text or math in THEIR handwriting for them, and fill in PDF worksheets. You only need to run one program. You do not
+need to host a website or use GitHub.
+
+What is in this folder
+  my-handwriting.json       their handwriting. PRIVATE: do not paste it anywhere, upload it, or put it on GitHub.
+  handwriting-mcp.js        the server: write_text, write_batch, handwriting_status
+  handwriting-mcp-pdf.js    the same, plus inspect_pdf and fill_pdf (read a PDF and write answers onto it)
+  docs/handwriting-engine-guide.pdf   a plain guide for the person (you do not need it)
+
+You need Node.js 18 or newer (check with:  node --version ). If it is missing, install it from https://nodejs.org .
+Nothing else needs installing: the server is one file with no packages.
+
+STEP 1. Start it as an MCP server. In your MCP settings, add a server like this (use the real full paths on this computer):
+
+  {
+    "mcpServers": {
+      "handwriting": {
+        "command": "node",
+        "args": ["/FULL/PATH/handwriting-mcp-pdf.js", "--samples", "/FULL/PATH/my-handwriting.json", "--format", "svg"]
+      }
+    }
+  }
+
+  For Claude Code, the same thing as one command:
+    claude mcp add handwriting -- node /FULL/PATH/handwriting-mcp-pdf.js --samples /FULL/PATH/my-handwriting.json --format svg
+
+  Use handwriting-mcp.js instead if you only need to write text, not fill PDFs.
+  The first call takes about 7 seconds (it learns the handwriting). After that it is fast.
+
+STEP 2. Check it works: call the tool  handwriting_status . It should say how many words are loaded.
+  If it says it cannot read the file, the path after --samples is wrong. Use the full path.
+
+STEP 3. Use it.
+  write_text   {"text": "The mean is 12.4", "kind": "text"}              one piece of writing
+               {"text": "x = \\frac{a}{b}", "kind": "math"}              math (see below)
+               optional: "format": "svg" | "png" | "both",  "seed": 2 (a different take),  "letter_height_pt": 10
+               svg comes back as text (the SVG itself, ready to save as a .svg file). It is also saved to a file; the
+               reply says where.
+  write_batch  {"items": [{"text": "one"}, {"text": "two"}]}              many at once. Use this, not a loop.
+  inspect_pdf  {"pdf": "/path/worksheet.pdf"}                            where the text and the answer lines are
+  fill_pdf     {"pdf": "/path/worksheet.pdf", "answers": [{"page": 1, "x": 72, "line_y": 192, "width": 468,
+                "text": "My answer"}]}   saves a NEW pdf (the original is never changed). "line_y" is the y of the
+                printed line the writing should sit on. Positions are in points from the top-left of the page.
+
+Math input:  x^2   x_1   \frac{a}{b}   \sqrt{x} or sqrt(x)   \sqrt[3]{x} or cubert(x)   \int_0^1   \sum_{i=1}^{n}
+  \text{ words }   for plain words inside math.     "\ " (backslash space) for a space that stays.
+  Ordinary spaces inside math are ignored, like in TeX.
+
+Rules
+  - Look at every result before you hand it over. Digits are the weakest part: check numbers carefully.
+  - If a character has no sample, the tool says so. Do not guess; tell the person.
+  - Write only what the person asked for. Do not fill in their name or anything else they did not give you.
+  - Whether it is okay to hand in work written this way is the person's decision, under their school's or workplace's rules.
+  - If a letter keeps coming out wrong, the person can fix it in the website (Write tab, "Fix mode") and download a new zip.

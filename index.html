@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="color-scheme" content="light dark">
+  <title>Handwriting Engine</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="top">
+    <h1>Handwriting Engine</h1>
+    <nav class="tabs" role="tablist" aria-label="Sections">
+      <button role="tab" id="tab-teach" aria-controls="teach" aria-selected="true">Teach</button>
+      <button role="tab" id="tab-write" aria-controls="write" aria-selected="false">Write</button>
+      <button role="tab" id="tab-sheet" aria-controls="sheet" aria-selected="false">Sheet</button>
+    </nav>
+    <span class="status" id="status" aria-live="polite"></span>
+    <button id="btnLock" class="ghost" title="Forget the password on this device and lock the page" hidden>Lock</button>
+  </header>
+
+  <main>
+    <!-- ============================= TEACH ============================= -->
+    <section id="teach" role="tabpanel" aria-labelledby="tab-teach">
+      <div class="teach-grid">
+        <div class="teach-main">
+          <div class="card" id="guestNote" hidden>
+            <b>Three steps</b>
+            <ol class="small">
+              <li>Go through the rounds below, in order (about 30 minutes). Write each one on the solid line, then tap Next.</li>
+              <li>When you are done, tap <b>Download for my AI</b> at the bottom left. It saves a zip with your handwriting and everything your AI needs.</li>
+              <li>Give that zip to your AI and tell it: "Unzip this and read FOR-THE-AI.txt."</li>
+            </ol>
+          </div>
+          <div class="rounds" id="rounds" role="group" aria-label="Rounds"></div>
+
+          <div class="card prompt-card">
+            <div class="prompt-head">
+              <span id="roundBlurb" class="muted"></span>
+              <span id="wordCount" class="muted"></span>
+            </div>
+            <div class="prompt" id="prompt" aria-live="polite"></div>
+            <div class="padwrap"><canvas id="pad" aria-label="Writing pad. Write the highlighted word on the line."></canvas></div>
+            <div class="padhint" id="padHint">Write the highlighted word on the solid line. Bigger and a little slower works better: try to fill the shaded band.</div>
+            <div class="actions">
+              <button id="btnPrev" class="ghost" title="Previous word">Back</button>
+              <button id="btnUndo" class="ghost" title="Undo last stroke (Ctrl/⌘+Z)">Undo</button>
+              <button id="btnClear" class="ghost">Clear</button>
+              <span class="spacer"></span>
+              <button id="btnNext" class="primary" title="Save and go to the next word (Enter)">Next</button>
+            </div>
+            <label class="check"><input type="checkbox" id="palm" checked> Ignore my palm (finger touches are ignored once the Pencil is used)</label>
+            <div class="penstate muted" id="penState"></div>
+          </div>
+        </div>
+
+        <aside class="teach-side">
+          <div class="card">
+            <h2>Coverage</h2>
+            <div id="coverage"></div>
+            <div id="inspect" class="inspect" hidden></div>
+            <p class="muted small" id="missing"></p>
+            <p class="muted small" id="rhythmNote"></p>
+          </div>
+          <div class="card">
+            <h2>Your own words</h2>
+            <p class="muted small">Add a sentence you write often and write it out. More real examples means more natural results.</p>
+            <div class="row">
+              <input type="text" id="customText" placeholder="e.g. Thanks so much, see you soon!" autocomplete="off" autocapitalize="off" spellcheck="false">
+              <button id="btnCustom">Add</button>
+            </div>
+          </div>
+          <div class="card">
+            <h2>Backup</h2>
+            <p class="muted small">Samples are saved in this browser. Export a copy to keep them safe or move them to another device.</p>
+            <div class="row">
+              <button id="btnExport">Export</button>
+              <button id="btnImport">Import</button>
+              <button id="btnReset" class="danger">Reset</button>
+            </div>
+            <input type="file" id="fileImport" accept="application/json,.json" hidden>
+          </div>
+        </aside>
+      </div>
+
+      <div class="card">
+        <h2>What it learned <span class="muted small" id="samplesNote"></span></h2>
+        <p class="muted small">Each colour is one letter the engine cut out of your word. If a word looks wrong, tap it to write it again. To check the letters themselves, tap a letter in the grid above and cross out any example that does not look like it.</p>
+        <div class="gallery" id="gallery"></div>
+      </div>
+    </section>
+
+    <!-- ============================= WRITE ============================= -->
+    <section id="write" role="tabpanel" aria-labelledby="tab-write" hidden>
+      <div class="write-grid">
+        <div class="write-main">
+          <div class="card">
+            <label for="text" class="lbl">Text to write</label>
+            <textarea id="text" rows="5" spellcheck="false">The quick brown fox jumps over the lazy dog.
+Pack my box with five dozen liquor jugs.</textarea>
+            <label class="check"><input type="checkbox" id="mathMode"> Math mode</label>
+            <p class="muted small" id="mathHelp" hidden>Write math like this: <code>x^2</code>, <code>x_1</code>, <code>\frac{a}{b}</code>, <code>\sqrt{x}</code>, <code>\lim_{x \to 0}</code>, <code>\int_0^1 x\,dx</code>, <code>\sum_{i=1}^{n}</code>, <code>\sqrt[3]{x}</code> (or <code>sqrt(x)</code>, <code>cubert(x)</code>). Plain text inside math: <code>\text{ so }</code>. A space that stays: <code>\ </code> (or <code>\quad</code>); ordinary spaces are ignored, as in TeX. A new line starts a new row. Symbols you have not written yet are drawn for you. Plain paper looks best.</p>
+            <p class="warn" id="warn" hidden></p>
+          </div>
+          <div class="fixrow" id="fixRow">
+            <label class="check"><input type="checkbox" id="fixMode"> Fix mode: tap a letter that looks wrong</label>
+            <p class="muted small" id="fixHelp" hidden>Tap the letter. It is replaced by another example of the same letter, and the example is left out from then on. Nothing else on the page changes.</p>
+            <p class="muted small" id="fixNote" hidden><span id="fixText"></span> <button id="btnFixUndo" type="button" class="ghost" hidden>Undo</button></p>
+          </div>
+          <div class="paperhost" id="paperhost">
+            <canvas id="paper"></canvas>
+            <div class="empty" id="empty" hidden>Teach it your handwriting first, then come back here.</div>
+          </div>
+          <div class="actions">
+            <button id="btnAgain" class="primary">Write it again</button>
+            <span class="spacer"></span>
+            <button id="btnPNG">Save PNG</button>
+            <button id="btnSVG">Save SVG</button>
+          </div>
+        </div>
+
+        <aside class="write-side">
+          <div class="card controls">
+            <h2>Look</h2>
+            <label>Size <output id="o-xh"></output><input type="range" id="xh" min="18" max="70" step="1" value="34"></label>
+            <label>Natural variation <output id="o-messiness"></output><input type="range" id="messiness" min="0" max="1" step="0.05" value="0.3"></label>
+            <p class="muted small" id="rhythmHint" hidden></p>
+            <label>Letter variety <output id="o-variation"></output><input type="range" id="variation" min="0" max="1" step="0.05" value="0.4"></label>
+            <label>Neatness <output id="o-neatness"></output><input type="range" id="neatness" min="0" max="1" step="0.05" value="0.5"></label>
+            <p class="muted small">Higher uses more of your clean single letters: easier to read, a little more like print.</p>
+            <label>Use my real words <output id="o-wordReuse"></output><input type="range" id="wordReuse" min="0" max="1" step="0.05" value="0.25"></label>
+            <label>Slant <output id="o-slantDelta"></output><input type="range" id="slantDelta" min="-20" max="20" step="1" value="0"></label>
+            <label>Word spacing <output id="o-wordSpacing"></output><input type="range" id="wordSpacing" min="0.5" max="1.8" step="0.05" value="1"></label>
+            <label>Line spacing <output id="o-lineHeight"></output><input type="range" id="lineHeight" min="2" max="4.5" step="0.1" value="3.1"></label>
+            <label>Pen thickness <output id="o-pen"></output><input type="range" id="pen" min="0.4" max="2.5" step="0.05" value="1"></label>
+            <p class="muted small">With the constant pen, 1.00 is Notability thickness 3 (about 0.4 is thickness 1).</p>
+            <label>Pen
+              <select id="penStyle">
+                <option value="constant">Constant width (like a note-taking pen)</option>
+                <option value="speed">Varies with speed</option>
+              </select>
+            </label>
+          </div>
+          <div class="card controls">
+            <h2>Paper &amp; ink</h2>
+            <label>Paper
+              <select id="paperKind">
+                <option value="white">White</option>
+                <option value="lined">Lined</option>
+                <option value="plain">Cream</option>
+                <option value="grid">Grid</option>
+                <option value="none">Transparent</option>
+              </select>
+            </label>
+            <label>Ink
+              <select id="ink">
+                <option value="#1749b3">Notability blue</option>
+                <option value="#1b1f3b">Blue-black</option>
+                <option value="#111111">Black</option>
+                <option value="#1c3fa8">Blue</option>
+                <option value="#8a1c1c">Red</option>
+                <option value="#2c5a3a">Green</option>
+              </select>
+            </label>
+            <label>Exact ink colour <input type="color" id="inkPicker" value="#1749b3"></label>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- ============================= SHEET ============================= -->
+    <section id="sheet" role="tabpanel" aria-labelledby="tab-sheet" hidden>
+      <div class="sheet-grid">
+        <div class="sheet-main">
+          <div class="card sheet-bar actions">
+            <button id="sheetOpen" class="primary">Open worksheet</button>
+            <input type="file" id="sheetFile" accept="application/pdf,image/png,image/jpeg" hidden>
+            <button id="sheetDraw" class="ghost" disabled>Draw answer box</button>
+            <span class="pager">
+              <button id="sheetPrev" class="ghost" aria-label="Previous page" disabled>&lsaquo;</button>
+              <span id="sheetPageNo">no page</span>
+              <button id="sheetNext" class="ghost" aria-label="Next page" disabled>&rsaquo;</button>
+            </span>
+            <span class="spacer"></span>
+            <button id="sheetSavePdf" disabled>Save PDF</button>
+            <button id="sheetSavePng" class="ghost" disabled>Save page as PNG</button>
+          </div>
+          <p class="warn" id="sheetWarn" hidden></p>
+          <div class="sheet-scroll" id="sheetScroll">
+            <p class="muted sheet-empty" id="sheetEmpty">Open a PDF or a photo of the worksheet. Then tap <b>Draw answer box</b> and drag a rectangle where an answer goes.</p>
+            <div class="sheet-stage" id="sheetStage" hidden>
+              <canvas id="sheetCanvas"></canvas>
+              <svg id="sheetInk" class="sheet-ink" aria-hidden="true"></svg>
+              <div id="sheetBoxes" class="sheet-boxes"></div>
+            </div>
+          </div>
+        </div>
+        <aside class="card sheet-side controls" id="sheetSide">
+          <h2>Answer</h2>
+          <p class="muted small" id="sheetHint">Select a box to type its answer. Boxes are kept for this file on this device.</p>
+          <div id="sheetForm" hidden>
+            <label>Text
+              <textarea id="sheetText" rows="4" spellcheck="false"></textarea>
+            </label>
+            <div class="row">
+              <label><input type="radio" name="sheetKind" value="text" checked> Words</label>
+              <label><input type="radio" name="sheetKind" value="math"> Math</label>
+            </div>
+            <label>Letter height <output id="o-sheetXh">9.5 pt</output>
+              <input type="range" id="sheetXh" min="5" max="16" step="0.5" value="9.5">
+            </label>
+            <label class="check"><input type="checkbox" id="sheetAuto" checked> Make it smaller if it does not fit</label>
+            <p class="warn" id="sheetBoxWarn" hidden></p>
+            <div class="row">
+              <button id="sheetAgain" class="ghost">Another take</button>
+              <button id="sheetDelete" class="ghost danger">Delete box</button>
+            </div>
+          </div>
+          <p class="muted small">The pen, colour and look come from the Write tab.</p>
+        </aside>
+      </div>
+    </section>
+  </main>
+
+  <!-- Download everything: shown only on the published site, which carries the package (src/download.js) -->
+  <div class="dl" id="dl" hidden>
+    <div class="dl-panel card" id="dlPanel" hidden>
+      <b id="dlTitle">Download everything</b>
+      <p class="muted small" id="dlText">One .zip with the app's code, the MCP server (a single file, ready to run) and the setup guide as a PDF.</p>
+      <label class="check" id="dlSamplesRow"><input type="checkbox" id="dlSamples"><span>Also include my handwriting (my-handwriting.json) <span id="dlSamplesNote"></span></span></label>
+      <p class="muted small" id="dlKeep">That file is yours alone. Leave it out if you are going to send the zip to someone.</p>
+      <div class="row"><button id="dlGo" class="primary">Download .zip</button><button id="dlClose" class="ghost">Close</button></div>
+    </div>
+    <button id="btnDownloadAll" class="dl-btn">Download everything</button>
+  </div>
+
+  <script src="src/geometry.js"></script>
+  <script src="src/align.js"></script>
+  <script src="src/style.js"></script>
+  <script src="src/synth.js"></script>
+  <script src="src/math.js"></script>
+  <script src="src/render.js"></script>
+  <script src="src/lines.js"></script>
+  <script src="src/capture.js"></script>
+  <script src="src/prompts.js"></script>
+  <script src="src/sheet.js"></script>
+  <script src="src/app.js"></script>
+  <script src="src/sheetui.js"></script>
+  <script src="src/download.js"></script>
+</body>
+</html>
