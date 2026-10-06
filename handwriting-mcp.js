@@ -2754,7 +2754,219 @@ module.exports = { createTools };
     return doc.save();
   }
 
-  const api = { layoutBox, writeInk, inkPath, pdfFromImage, hexToRgb, DEFAULT_XH_PT, MIN_XH_PT, ENGINE_XH };
+  // ---- finding the blanks on a page ---------------------------------------------------------------------------------------
+  //
+  // Works on a picture of the page, not on the PDF's drawing commands, so a scan or a photo of a worksheet works the same
+  // as a typed PDF. Two kinds of blank: an answer line (a printed rule or a row of underscores with nothing written on
+  // it) and an empty box (any closed outline with nothing inside, which covers table cells too).
+
+  /** Ink map of a page picture: 1 where a pixel is clearly darker than the paper around it. Comparing with the local
+   * paper colour, not a fixed grey, is what lets a photo with a shadow across it work. */
+  function inkMap(img) {
+    const W = img.width;
+    const H = img.height;
+    const d = img.data;
+    const rgba = d.length === W * H * 4;
+    const g = new Uint8Array(W * H);
+    for (let i = 0, j = 0; i < g.length; i++, j += 4) g[i] = rgba ? (d[j] * 3 + d[j + 1] * 6 + d[j + 2]) / 10 : d[i];
+    // paper colour: the brightest pixel in each block, then the brightest of the blocks around it
+    const B = 24;
+    const bw = Math.ceil(W / B);
+    const bh = Math.ceil(H / B);
+    const blk = new Uint8Array(bw * bh);
+    for (let y = 0; y < H; y++) {
+      const row = ((y / B) | 0) * bw;
+      for (let x = 0; x < W; x++) {
+        const k = row + ((x / B) | 0);
+        if (g[y * W + x] > blk[k]) blk[k] = g[y * W + x];
+      }
+    }
+    const paper = new Uint8Array(bw * bh);
+    for (let by = 0; by < bh; by++) {
+      for (let bx = 0; bx < bw; bx++) {
+        let m = 0;
+        for (let yy = Math.max(0, by - 1); yy <= Math.min(bh - 1, by + 1); yy++) {
+          for (let xx = Math.max(0, bx - 1); xx <= Math.min(bw - 1, bx + 1); xx++) m = Math.max(m, blk[yy * bw + xx]);
+        }
+        paper[by * bw + bx] = m;
+      }
+    }
+    const ink = new Uint8Array(W * H);
+    for (let y = 0; y < H; y++) {
+      const row = ((y / B) | 0) * bw;
+      for (let x = 0; x < W; x++) {
+        const p = paper[row + ((x / B) | 0)];
+        if (g[y * W + x] < 0.78 * p && p > 90) ink[y * W + x] = 1;
+      }
+    }
+    return ink;
+  }
+
+  /** Share of ink pixels in a rectangle of the ink map (pixel coordinates, clipped to the picture). */
+  function inkShare(ink, W, H, x0, y0, x1, y1) {
+    x0 = Math.max(0, Math.round(x0));
+    y0 = Math.max(0, Math.round(y0));
+    x1 = Math.min(W, Math.round(x1));
+    y1 = Math.min(H, Math.round(y1));
+    if (x1 <= x0 || y1 <= y0) return 0;
+    let n = 0;
+    for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) n += ink[y * W + x];
+    return n / ((x1 - x0) * (y1 - y0));
+  }
+
+  /** Thin horizontal strokes at least minLen pixels long: [{x0, x1, y0, y1}] (y1 inclusive). */
+  function horizontalRules(ink, W, H, minLen, gap, maxThick) {
+    const open = []; // groups still being extended downwards
+    const done = [];
+    for (let y = 0; y < H; y++) {
+      const runs = [];
+      let x = 0;
+      while (x < W) {
+        if (!ink[y * W + x]) {
+          x++;
+          continue;
+        }
+        const start = x;
+        let end = x;
+        let miss = 0;
+        for (x++; x < W; x++) {
+          if (ink[y * W + x]) {
+            end = x;
+            miss = 0;
+          } else if (++miss > gap) break;
+        }
+        if (end - start + 1 >= minLen) runs.push({ x0: start, x1: end });
+      }
+      const next = [];
+      for (const r of runs) {
+        // the same rule seen on the row above: the runs mostly overlap
+        const g = open.find((o) => o.y1 === y - 1 && !o.used && Math.min(o.x1, r.x1) - Math.max(o.x0, r.x0) > 0.8 * Math.min(o.x1 - o.x0, r.x1 - r.x0));
+        if (g) {
+          g.used = true;
+          g.y1 = y;
+          g.x0 = Math.min(g.x0, r.x0);
+          g.x1 = Math.max(g.x1, r.x1);
+          next.push(g);
+        } else next.push({ x0: r.x0, x1: r.x1, y0: y, y1: y, used: true });
+      }
+      for (const o of open) if (!next.includes(o)) done.push(o);
+      for (const n of next) n.used = false;
+      open.length = 0;
+      open.push(...next);
+    }
+    done.push(...open);
+    return done.filter((r) => r.y1 - r.y0 + 1 <= maxThick).map(({ x0, x1, y0, y1 }) => ({ x0, x1, y0, y1 }));
+  }
+
+  /** Does ink run straight down (dir 1) or up (dir -1) from (x, y) for at least len pixels, within a couple of pixels
+   * either side? */
+  function stem(ink, W, H, x, y, len, dir) {
+    let n = 0;
+    for (let k = 0, yy = y; k < len && yy >= 0 && yy < H; k++, yy += dir) {
+      let hit = false;
+      for (let xx = Math.max(0, x - 2); xx <= Math.min(W - 1, x + 2) && !hit; xx++) hit = ink[yy * W + xx] === 1;
+      if (!hit) break;
+      n++;
+    }
+    return n >= len;
+  }
+
+  /** Closed outlines with nothing inside: white regions that do not reach the edge of the page and fill their own
+   * bounding rectangle. Returns pixel rectangles [{x0, y0, x1, y1}] of the inside. */
+  function emptyBoxes(ink, W, H, s) {
+    const label = new Int32Array(W * H);
+    const queue = new Int32Array(W * H);
+    const out = [];
+    let next = 1;
+    for (let start = 0; start < W * H; start++) {
+      if (ink[start] || label[start]) continue;
+      let head = 0;
+      let tail = 0;
+      queue[tail++] = start;
+      label[start] = next;
+      let x0 = W;
+      let x1 = 0;
+      let y0 = H;
+      let y1 = 0;
+      let area = 0;
+      let edge = false;
+      while (head < tail) {
+        const i = queue[head++];
+        const x = i % W;
+        const y = (i - x) / W;
+        area++;
+        if (x < x0) x0 = x;
+        if (x > x1) x1 = x;
+        if (y < y0) y0 = y;
+        if (y > y1) y1 = y;
+        if (x === 0 || y === 0 || x === W - 1 || y === H - 1) edge = true;
+        if (x > 0 && !ink[i - 1] && !label[i - 1]) (label[i - 1] = next), (queue[tail++] = i - 1);
+        if (x < W - 1 && !ink[i + 1] && !label[i + 1]) (label[i + 1] = next), (queue[tail++] = i + 1);
+        if (y > 0 && !ink[i - W] && !label[i - W]) (label[i - W] = next), (queue[tail++] = i - W);
+        if (y < H - 1 && !ink[i + W] && !label[i + W]) (label[i + W] = next), (queue[tail++] = i + W);
+      }
+      next++;
+      const w = x1 - x0 + 1;
+      const h = y1 - y0 + 1;
+      if (edge || w < 36 * s || h < 14 * s) continue;
+      if (w * h > 0.5 * W * H) continue; // a frame around the whole page is not an answer box
+      if (area < 0.9 * w * h) continue; // not a plain rectangle, or something is written in it
+      const m = 2 * s;
+      if (inkShare(ink, W, H, x0 + m, y0 + m, x1 - m, y1 - m) > 0.002) continue;
+      out.push({ x0, y0, x1, y1 });
+    }
+    return out;
+  }
+
+  /**
+   * The blanks on one page. img: {data, width, height}, with data RGBA (from a canvas) or one grey byte per pixel.
+   * s: pixels per point of the picture. Returns [{kind: 'line' | 'box', x, y, w, h}] in points from the top-left of the
+   * page, already shaped as an answer box: a line's box sits on the line, a box's is its inside.
+   */
+  function findBlanks(img, s) {
+    const W = img.width;
+    const H = img.height;
+    const ink = inkMap(img);
+    const found = [];
+
+    const boxes = emptyBoxes(ink, W, H, s);
+    for (const b of boxes) {
+      const inset = 3;
+      found.push({ kind: 'box', x: b.x0 / s + inset, y: b.y0 / s + inset, w: (b.x1 - b.x0 + 1) / s - 2 * inset, h: (b.y1 - b.y0 + 1) / s - 2 * inset });
+    }
+
+    const rules = horizontalRules(ink, W, H, Math.round(30 * s), Math.max(1, Math.round(0.75 * s)), Math.round(3 * s) + 1);
+    for (const r of rules) {
+      // an edge of a box found above is already offered as that box
+      const onBox = boxes.some((b) => (Math.abs(r.y0 - b.y1) <= 4 * s || Math.abs(r.y1 - b.y0) <= 4 * s) && Math.min(r.x1, b.x1) - Math.max(r.x0, b.x0) > 0.5 * (r.x1 - r.x0));
+      if (onBox) continue;
+      // the top or bottom of a frame or a table, not a line to write on: both its ends turn down, or both turn up
+      const len = Math.round(8 * s);
+      if (stem(ink, W, H, r.x0, r.y1 + 1, len, 1) && stem(ink, W, H, r.x1, r.y1 + 1, len, 1)) continue;
+      if (stem(ink, W, H, r.x0, r.y0 - 1, len, -1) && stem(ink, W, H, r.x1, r.y0 - 1, len, -1)) continue;
+      // something is already written on it (or it underlines a heading)
+      if (inkShare(ink, W, H, r.x0, r.y0 - 18 * s, r.x1 + 1, r.y0 - 2 * s) > 0.006) continue;
+      // how much room there is above it, for the height of the box
+      let room = 40;
+      for (let k = Math.round(2 * s); k <= 40 * s; k++) {
+        if (inkShare(ink, W, H, r.x0, r.y0 - k - 1, r.x1 + 1, r.y0 - k) > 0.02) {
+          room = k / s;
+          break;
+        }
+      }
+      const h = clamp(room - 3, 14, 28);
+      const lineY = r.y0 / s;
+      found.push({ kind: 'line', x: r.x0 / s + 1, y: lineY - h, w: (r.x1 - r.x0 + 1) / s - 2, h });
+    }
+    found.sort((a, b) => a.y + a.h - (b.y + b.h) || a.x - b.x);
+    return found;
+  }
+
+  function clamp(v, lo, hi) {
+    return Math.max(lo, Math.min(hi, v));
+  }
+
+  const api = { layoutBox, writeInk, inkPath, pdfFromImage, hexToRgb, findBlanks, DEFAULT_XH_PT, MIN_XH_PT, ENGINE_XH };
   root.HW = root.HW || {};
   root.HW.sheet = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
