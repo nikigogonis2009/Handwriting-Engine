@@ -57,6 +57,7 @@ Data flow: `capture.js` records strokes -> `align.js` cuts each word into letter
 | `src/app.js`, `index.html`, `styles.css` | The UI. `window.HW_APP` exposes `style`, `words`, `layout` for debugging. |
 | `scripts/build-protected.js`, `deploy-pages.sh`, `login.template.html` | The password-protected site. |
 | `tools/handwrite-blocks.js`, `tools/place_on_pdf.py` | Write text or math in the user's hand onto a PDF (see below). |
+| `tools/hw.js`, `tools/find-blanks.js` | For an assistant that can run commands but cannot connect an MCP server (a cloud session): `hw.js` runs one MCP tool from the command line (`node tools/hw.js --samples <file> <tool> '<json>'`, pictures saved as PNGs, a sealed file opened with `HANDWRITING_PASSWORD` from the environment; `--password` is refused so it never shows in the process list). `find-blanks.js` runs `findBlanks` on pages from `pdftoppm -r 144 -gray`, giving answer boxes in points ready for `fill_pdf`. |
 
 Coordinates inside the engine: x right, **y up**, baseline 0, x-height 1, de-slanted. The page conversion to pixels (y down, slant) happens at the end of `layout`. A "unit" is one cut-out letter: `{ch, strokes, marks, entry, exit, box, ...}`.
 

@@ -72,6 +72,16 @@ Tools:
 - `inspect_pdf`: for each page, the printed text and the ruled lines, with positions in points from the top-left corner. This is how the assistant finds where an answer goes.
 - `fill_pdf`: writes answers onto a PDF and saves a new file (the original is never changed). Each answer has a page, an x position, a width, and either a y (top of the box) or the y of the printed line it should sit on. Long answers are written smaller to fit, and the reply says which ones were.
 
+### Without connecting a server
+
+An assistant that can run commands but cannot connect an MCP server (a cloud session, say) can call the same tools from the command line:
+
+    node tools/hw.js --samples my-handwriting.json write_text '{"text": "x = \\frac{a}{b}", "kind": "math"}'
+    pdftoppm -r 144 -gray worksheet.pdf page && node tools/find-blanks.js page-*.pgm    # where the answers go
+    node tools/hw.js --samples my-handwriting.json fill_pdf @answers.json
+
+A sealed samples file (see below) works too, with the password in `HANDWRITING_PASSWORD`.
+
 ### One file, and a web address
 
 `npm run build:mcp` folds the server and the whole engine into one file, `dist/handwriting-mcp.js` (about 150 KB), that needs nothing else: no npm packages, no project folder. Copy it anywhere next to your `my-handwriting.json` and run `node handwriting-mcp.js` (it looks for `my-handwriting.json` in the folder it is started in, then next to itself, or use `--samples`). That file has `handwriting_status` and `write_text`. `node scripts/build-mcp.js --pdf --out dist/handwriting-mcp-pdf.js` also adds `inspect_pdf` and `fill_pdf`, and makes the file about 2 MB.
