@@ -389,6 +389,7 @@
 
   /**
    * opts: {xh (px), width (px), lineHeight (x-heights), wordSpacing, messiness 0..1,
+   *        drift 0..1 (how far lines tilt and wander off the straight line, on its own; left out, it follows messiness),
    *        neatness 0..1 (how much the writer's clean single letters are preferred over letters cut out of words),
    *        wordReuse 0..1 (how willingly a word the writer wrote is written back from their real strokes), variation 0..1, slantDelta (deg), seed, margin (px)}
    * returns {width, height, strokes:[{pts:[{x,y,w}], taperStart, taperEnd}], missing:[...], baselines:[...]}
@@ -404,6 +405,10 @@
     // measured, 0 is none, above 30% exaggerates.
     const R = style.rhythm && style.rhythm.learned ? style.rhythm : null;
     const k = R ? Math.min(3.5, Math.max(0, o.messiness / 0.3)) : 0;
+    // Drift (the tilt of each line and the baseline wandering along it) has its own setting, so the lines can trail
+    // off without the word sizes and slants swinging more too. Left out, it is the same as messiness, as before.
+    const driftAmt = o.drift == null ? o.messiness : o.drift;
+    const kd = R ? Math.min(3.5, Math.max(0, driftAmt / 0.3)) : 0;
     const ctx = { variation: o.variation, messiness: o.messiness, usage: new Map(), missing: new Set(), rhythm: !!R, wordReuse: o.wordReuse, wordUse: new Map(), neat: 4 * o.neatness };
     const xh = o.xh;
     const margin = o.margin != null ? o.margin : xh * 1.2;
@@ -417,7 +422,7 @@
     const baselines = [];
     let line = 0;
     let x = margin;
-    const pickSlope = () => (R ? Math.tan(R.slopeSd * k * G.gaussian(rng)) : (rng() * 2 - 1) * 0.006 * o.messiness);
+    const pickSlope = () => (R ? Math.tan(R.slopeSd * kd * G.gaussian(rng)) : (rng() * 2 - 1) * 0.006 * driftAmt);
     let slope = pickSlope();
     let wordOff = 0;
     let sizeState = 0; // log scale of the current word, drifts like the writer's does
@@ -463,8 +468,8 @@
         const b = bounds(pxStrokes);
         const wpx = b.maxX - b.minX;
         if (x > margin && x + wpx > o.width - margin) newLine();
-        if (R) wordOff = ar(wordOff / xh, R.baseRho, R.baseSd * k) * xh;
-        else wordOff = wordOff * 0.7 + (rng() * 2 - 1) * 0.035 * xh * o.messiness;
+        if (R) wordOff = ar(wordOff / xh, R.baseRho, R.baseSd * kd) * xh;
+        else wordOff = wordOff * 0.7 + (rng() * 2 - 1) * 0.035 * xh * driftAmt;
         const base = baselines[line] + slope * (x - margin) + wordOff;
         const dx = x - b.minX;
         for (const s of pxStrokes) {

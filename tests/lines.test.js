@@ -169,3 +169,30 @@ test('without line data the output is unchanged by the new code path', () => {
   const lay = Y.layout(st, 'the quick brown fox', { xh: 34, width: 900, seed: 2 });
   assert.ok(lay.strokes.length > 0);
 });
+
+test('drift moves the lines on its own, without changing word sizes', () => {
+  const st = styleWithLines({ baseSd: 0.1, sizeSd: 0.1, gap: 1.0, gapSd: 0.2 }, 10);
+  const text = 'o o o o o o o o o o o o o o o o';
+  const run = (drift) => {
+    const lay = Y.layout(st, text, { xh: 34, width: 4000, seed: 5, messiness: 0, drift, variation: 0 });
+    const boxes = lay.strokes.map((s) => {
+      const ys = s.pts.map((p) => p.y);
+      return { bottom: Math.max(...ys), h: Math.max(...ys) - Math.min(...ys) };
+    });
+    const m = boxes.reduce((a, b) => a + b.bottom, 0) / boxes.length;
+    const spread = Math.sqrt(boxes.reduce((a, b) => a + (b.bottom - m) ** 2, 0) / boxes.length);
+    return { spread, heights: boxes.map((b) => b.h) };
+  };
+  const flat = run(0);
+  const drifting = run(0.9);
+  assert.ok(flat.spread < 0.5, 'drift 0 -> straight line, spread ' + flat.spread.toFixed(2));
+  assert.ok(drifting.spread > flat.spread + 0.5, `drift 0.9 spread ${drifting.spread.toFixed(2)}`);
+  drifting.heights.forEach((h, i) => assert.ok(Math.abs(h - flat.heights[i]) < 0.01, `letter ${i} kept its size`));
+});
+
+test('left out, drift follows messiness as before', () => {
+  const st = styleWithLines({ baseSd: 0.1, sizeSd: 0.1, gap: 1.0, gapSd: 0.2 }, 10);
+  const a = Y.layout(st, 'the quick brown fox jumps', { seed: 7, messiness: 0.6 });
+  const b = Y.layout(st, 'the quick brown fox jumps', { seed: 7, messiness: 0.6, drift: 0.6 });
+  assert.deepEqual(a.strokes, b.strokes);
+});

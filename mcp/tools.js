@@ -112,6 +112,7 @@ function createTools(config) {
   const clampNum = (v, lo, hi, d) => (Number.isFinite(Number(v)) && v !== null && v !== undefined ? Math.max(lo, Math.min(hi, Number(v))) : d);
   const lookFrom = (a) => ({
     messiness: clampNum(a.messiness, 0, 1, LOOK.messiness),
+    drift: a.drift == null ? undefined : clampNum(a.drift, 0, 1, LOOK.messiness),
     variation: clampNum(a.variation, 0, 1, LOOK.variation),
     neatness: clampNum(a.neatness, 0, 1, LOOK.neatness),
     wordReuse: clampNum(a.word_reuse, 0, 1, LOOK.wordReuse),
@@ -192,6 +193,7 @@ function createTools(config) {
           seed: { type: 'integer', description: 'Another number gives another take of the same text.' },
           neatness: { type: 'number', description: '0 to 1, higher is easier to read. Default 0.5.' },
           messiness: { type: 'number', description: '0 to 1. Default 0.3.' },
+          drift: { type: 'number', description: '0 to 1: how much each line tilts and wanders off a straight line, without changing word sizes. Default: same as messiness.' },
           format: { type: 'string', enum: ['png', 'svg', 'both'], description: 'png (default) comes back as an image. svg comes back as text: the SVG markup itself, transparent, sized in points, ready to save as a .svg file or place on a page. both gives both. The files are saved either way.' },
           include_base64: { type: 'boolean', description: 'Also put the PNG, base64 encoded, in the text of the reply (for a client that cannot show images). It is long, so leave it off otherwise.' },
         },
@@ -213,6 +215,7 @@ function createTools(config) {
           ink: { type: 'string' },
           neatness: { type: 'number' },
           messiness: { type: 'number' },
+          drift: { type: 'number' },
           format: { type: 'string', enum: ['png', 'svg', 'both'], description: 'As in write_text. Default png.' },
           return_images: { type: 'boolean', description: 'Default true. False returns only the saved file paths, which is much smaller.' },
           include_base64: { type: 'boolean', description: 'Also give each PNG as base64 text.' },
@@ -260,6 +263,8 @@ function createTools(config) {
           out: { type: 'string', description: 'Where to save. Default: <name>-filled.pdf in the output folder.' },
           ink: { type: 'string', description: 'Pen colour as #rrggbb. Default #1749b3.' },
           neatness: { type: 'number' },
+          messiness: { type: 'number', description: '0 to 1. Default 0.3.' },
+          drift: { type: 'number', description: '0 to 1: how much lines tilt and wander. Default: same as messiness.' },
           answers: {
             type: 'array',
             items: {
